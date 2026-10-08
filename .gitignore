@@ -1,0 +1,5 @@
+_supa_credentials.txt
+*credentials*
+.vercel
+.DS_Store
+node_modules
