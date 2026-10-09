@@ -17,6 +17,7 @@ Combina una experiencia visual cuidada al detalle (estética editorial, fondos f
 - [✨ Características Principales](#-características-principales)
 - [🏗️ Arquitectura del Sistema](#️-arquitectura-del-sistema)
 - [🔄 Cómo Funciona la Sincronización](#-cómo-funciona-la-sincronización)
+- [🔔 Notificaciones Push (Recordatorios)](#-notificaciones-push-recordatorios)
 - [🧠 Procesamiento de Lenguaje Natural (NLP)](#-procesamiento-de-lenguaje-natural-nlp)
 - [🌦️ Integración Meteorológica](#️-integración-meteorológica)
 - [📱 Instalación como App (PWA)](#-instalación-como-app-pwa)
@@ -67,6 +68,11 @@ Combina una experiencia visual cuidada al detalle (estética editorial, fondos f
   - Service Worker con estrategia de caché offline para funcionamiento garantizado sin conexión.
   - Instalable en pantalla de inicio en iOS, Android, macOS y Windows.
 
+- **🔔 Recordatorios con Notificaciones Push**:
+  - Botón "Activar recordatorios" que suscribe el dispositivo mediante el estándar **Web Push (VAPID)**.
+  - Compatible con Android (navegador o instalada) e iOS 16.4+ (requiere instalar la PWA en pantalla de inicio).
+  - Un **Vercel Cron Job** diario avisa de los eventos pendientes del día siguiente, incluso con la app cerrada.
+
 ---
 
 ## 🏗️ Arquitectura del Sistema
@@ -86,21 +92,36 @@ graph TD
 
     subgraph Cloud [Vercel Serverless]
         API["/api/sync.js (Node.js)"]
+        PushAPI["/api/push-subscribe.js"]
+        VapidAPI["/api/vapid-public-key.js"]
+        Cron["/api/cron-notify.js (Vercel Cron, diario)"]
     end
 
     subgraph Database [Supabase / PostgreSQL]
         RLS[Row Level Security]
         RPC1[RPC: get_or_create_calendar]
         RPC2[RPC: merge_calendar]
+        RPC3[RPC: save/delete/list push_subscriptions]
         Table[(Tabla: public.calendars)]
+        PushTable[(Tabla: public.push_subscriptions)]
+        LogTable[(Tabla: public.push_log)]
     end
 
     User -->|GET / PUT con x-key| API
+    User -->|Permiso de notificaciones| SW
+    SW -->|PushManager.subscribe| PushAPI
+    SW -->|clave pública VAPID| VapidAPI
     API -->|Service Role Key| RLS
+    PushAPI -->|Service Role Key| RLS
+    Cron -->|Service Role Key| RLS
+    Cron -->|Web Push / VAPID| SW
     RLS --> RPC1
     RLS --> RPC2
+    RLS --> RPC3
     RPC1 --> Table
     RPC2 --> Table
+    RPC3 --> PushTable
+    Cron --> LogTable
 ```
 
 ---
@@ -119,6 +140,27 @@ La aplicación utiliza un algoritmo determinista de **Resolución de Conflictos 
 3. **Detección Automática y Segundo Plano**:
    - Monitoreo de foco y visibilidad (`visibilitychange`). Al regresar a la pestaña, se lanza automáticamente un `pull` de cambios.
    - Almacenamiento diferido con debounce de 900 ms para evitar saturar la base de datos mientras el usuario escribe o interactúa.
+
+---
+
+## 🔔 Notificaciones Push (Recordatorios)
+
+La app puede avisar de los eventos del día siguiente aunque esté cerrada, usando el estándar **Web Push** (sin servicios propietarios de terceros):
+
+1. **Activación en el dispositivo**:
+   - El botón 🔔 ("Activar recordatorios") solicita permiso de notificaciones y registra una suscripción (`PushSubscription`) en el `Service Worker` del navegador.
+   - En **iOS** es necesario tener la PWA **instalada en la pantalla de inicio** (requisito de Apple desde iOS 16.4); en **Android** funciona también desde el navegador.
+2. **Guardado en Supabase**:
+   - La suscripción (`endpoint` + claves `p256dh`/`auth`) se envía a `/api/push-subscribe` junto con la misma `x-key` que identifica tu calendario, y queda asociada a él en la tabla `public.push_subscriptions`.
+3. **Envío programado (Vercel Cron)**:
+   - `vercel.json` define un **Cron Job** que invoca `/api/cron-notify` una vez al día (por defecto a las 20:00 UTC).
+   - La función agrupa las suscripciones por calendario, calcula los eventos pendientes de **mañana** y envía un recordatorio firmado con las claves **VAPID** a cada dispositivo suscrito mediante la librería [`web-push`](https://www.npmjs.com/package/web-push).
+   - Se evita enviar el mismo aviso dos veces el mismo día (tabla `public.push_log`) y se eliminan automáticamente las suscripciones caducadas (HTTP 404/410).
+4. **Recepción en segundo plano**:
+   - El `Service Worker` (`sw.js`) escucha el evento `push`, muestra la notificación del sistema y, al pulsarla (`notificationclick`), abre o enfoca la app.
+
+> [!NOTE]
+> El cron job y el envío de notificaciones requieren configurar las variables de entorno `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` (y opcionalmente `VAPID_SUBJECT` y `CRON_SECRET`) — ver la sección [Variables de Entorno](#3-variables-de-entorno).
 
 ---
 
@@ -165,7 +207,12 @@ Al cumplir con los estándares de Progressive Web App, **Calendario 26/27** pued
 ```text
 AgendaOnline/
 ├── api/
-│   └── sync.js             # Función Serverless en Vercel (manejo de RPC Supabase, limpieza y auth)
+│   ├── _lib/
+│   │   └── supabase.js     # Helper compartido para invocar RPC de Supabase (service_role)
+│   ├── sync.js              # Función Serverless en Vercel (manejo de RPC Supabase, limpieza y auth)
+│   ├── vapid-public-key.js  # Expone la clave pública VAPID al cliente
+│   ├── push-subscribe.js    # Guarda / elimina la suscripción Push de un dispositivo
+│   └── cron-notify.js       # Cron diario: envía recordatorios de eventos de "mañana"
 ├── assets/
 │   ├── sep.jpg ... ago.jpg # Fondos fotográficos de alta resolución por cada mes
 │   ├── flor.png            # Recurso decorativo
@@ -175,7 +222,9 @@ AgendaOnline/
 │   └── schema.sql          # DDL completo de PostgreSQL, tablas, RLS y funciones RPC atómicas
 ├── index.html              # Frontend SPA completo (HTML5 semántico, CSS3 moderno, lógica JS)
 ├── manifest.webmanifest    # Manifiesto de la Progressive Web App
-├── sw.js                   # Service Worker para caché offline
+├── package.json            # Dependencia `web-push` para las funciones Serverless
+├── vercel.json              # Configuración del Cron Job diario (/api/cron-notify)
+├── sw.js                   # Service Worker: caché offline + recepción de notificaciones Push
 └── README.md               # Documentación oficial del proyecto
 ```
 
@@ -190,8 +239,9 @@ AgendaOnline/
 3. Copia y pega el contenido del archivo [`supabase/schema.sql`](file:///Users/usuario/Documents/WEBS/AgendaOnline/supabase/schema.sql) y haz clic en **Run**.
 4. Este script configurará:
    - La tabla `public.calendars`.
+   - Las tablas `public.push_subscriptions` y `public.push_log` (recordatorios).
    - Bloqueo de seguridad estricto con **Row Level Security (RLS)** sin políticas públicas.
-   - Las funciones PL/pgSQL `get_or_create_calendar` y `merge_calendar`, autorizadas únicamente para el rol `service_role`.
+   - Las funciones PL/pgSQL `get_or_create_calendar`, `merge_calendar` y las de notificaciones push (`save_push_subscription`, `delete_push_subscription`, `list_push_targets`, `mark_push_sent`...), autorizadas únicamente para el rol `service_role`.
 5. Ve a **Project Settings** -> **API** y toma nota de:
    - **Project URL** (`https://xxxxxxxx.supabase.co`)
    - Clave privada **`service_role`** (*Secret* — nunca compartir ni incluir en el frontend).
@@ -199,8 +249,12 @@ AgendaOnline/
 ### 2. Despliegue en Vercel
 
 1. Vincula tu repositorio de GitHub con [Vercel](https://vercel.com/new).
-2. Vercel detectará automáticamente la estructura estática junto con la carpeta de funciones `/api`.
-3. Antes de desplegar, añade las variables de entorno detalladas a continuación.
+2. Vercel detectará automáticamente la estructura estática, la carpeta de funciones `/api`, el `package.json` (instalará la dependencia `web-push`) y el Cron Job definido en `vercel.json`.
+3. Genera un par de claves **VAPID** (solo hace falta una vez por proyecto) ejecutando en tu terminal:
+   ```bash
+   npx web-push generate-vapid-keys
+   ```
+4. Antes de desplegar, añade las variables de entorno detalladas a continuación.
 
 ### 3. Variables de Entorno
 
@@ -210,9 +264,13 @@ En tu panel de Vercel (**Settings** -> **Environment Variables**), añade las si
 | :--- | :--- | :--- |
 | `SUPABASE_URL` | URL de tu proyecto Supabase (`https://<project-ref>.supabase.co`) | Producción / Preview |
 | `SUPABASE_SERVICE_ROLE_KEY` | Clave secreta con rol `service_role` de Supabase | Producción / Preview |
+| `VAPID_PUBLIC_KEY` | Clave pública generada con `web-push generate-vapid-keys` | Producción / Preview |
+| `VAPID_PRIVATE_KEY` | Clave privada generada junto a la anterior (*Secret*) | Producción / Preview |
+| `VAPID_SUBJECT` | *(Opcional)* Contacto del remitente, p. ej. `mailto:tucorreo@dominio.com` | Producción / Preview |
+| `CRON_SECRET` | *(Recomendado)* Cadena aleatoria; Vercel la envía automáticamente al invocar el cron para verificar que la petición es legítima | Producción |
 
 > [!CAUTION]
-> **Nunca** expongas `SUPABASE_SERVICE_ROLE_KEY` en el cliente (`index.html`). Solo debe residir en las variables de entorno de Vercel para ser consumida exclusivamente por la Serverless Function `/api/sync.js`.
+> **Nunca** expongas `SUPABASE_SERVICE_ROLE_KEY` ni `VAPID_PRIVATE_KEY` en el cliente (`index.html`). Solo deben residir en las variables de entorno de Vercel, consumidas exclusivamente por las Serverless Functions (`/api/sync.js`, `/api/push-subscribe.js`, `/api/cron-notify.js`). `VAPID_PUBLIC_KEY` sí se expone al navegador (a través de `/api/vapid-public-key.js`) porque no es sensible.
 
 ---
 
@@ -221,14 +279,16 @@ En tu panel de Vercel (**Settings** -> **Environment Variables**), añade las si
 - **Zero-Knowledge Hash en Frontend**: La clave introducida por el usuario nunca viaja en texto plano a la red; el cliente genera un digest SHA-256 (`cal2627|<clave>`), utilizándolo como identificador único (`x-key`).
 - **Blindaje RLS**: Nadie puede consultar la base de datos de Supabase usando la clave anónima (`anon key`). Todas las mutaciones y consultas pasan obligatoriamente por el backend con validación de expresiones regulares de hash (`^[a-f0-9]{64}$`).
 - **Protección contra DoS y Cargas Excesivas**: El endpoint valida el formato de clave, descarta campos maliciosos (`__proto__`), restringe el tamaño del payload a menos de 900 KB y aplica límites de caracteres en las notas.
+- **Suscripciones Push aisladas por clave**: Cada suscripción Web Push queda ligada al `x-key` que la creó; solo esa misma clave puede eliminarla (`delete_push_subscription`), y el endpoint `/api/cron-notify` solo acepta peticiones con el `CRON_SECRET` correcto.
 
 ---
 
 ## 🛠️ Stack Tecnológico
 
 - **Frontend**: Vanilla JavaScript (ES6+), HTML5, CSS3 Glassmorphism, Canvas API.
-- **PWA**: Service Workers API, Web App Manifest.
-- **Backend / Serverless**: Node.js en Vercel Serverless Functions.
+- **PWA**: Service Workers API, Web App Manifest, Push API / Notifications API.
+- **Backend / Serverless**: Node.js en Vercel Serverless Functions, Vercel Cron Jobs.
+- **Notificaciones**: Web Push (VAPID) vía la librería [`web-push`](https://www.npmjs.com/package/web-push).
 - **Base de Datos**: PostgreSQL en Supabase, PL/pgSQL, JSONB.
 - **APIs Externas**: Open-Meteo Weather Forecast API.
 - **Tipografía y Gráficos**: Google Fonts, SVG nativo.

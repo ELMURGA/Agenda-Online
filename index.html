@@ -46,6 +46,7 @@ section{padding:64px 0 28px;min-height:100svh;display:flex;flex-direction:column
   #top button,#top .top-pill{padding:7px 9px;font-size:12px;gap:3px}
 }
 #cl{color:#aaa!important}#cl[data-s=ok]{color:#3f9d6a!important}#cl[data-s=err]{color:#d0705f!important}#cl[data-s=sync]{color:#c98f88!important;animation:pl 1s infinite}@keyframes pl{50%{opacity:.35}}
+#pushBtn.on{background:#2b1a10;color:#f4f0ed}
 #rail{position:fixed;right:6px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:3px;z-index:5}
 #rail button{border:0;background:transparent;padding:4px;display:flex}#rail i{display:block;width:7px;height:7px;border-radius:50%;border:0 solid #fff;transition:.2s}
 #rail button.on i{width:12px;height:12px;border-width:2px;margin:-2px}
@@ -99,6 +100,7 @@ section{padding:64px 0 28px;min-height:100svh;display:flex;flex-direction:column
   <div id="clk" class="top-pill" title="Hora actual">--:--</div>
   <button id="wtBtn" class="top-pill" title="Ver el tiempo"><span id="wtIco">🌤️</span> <span id="wtVal">--°</span></button>
   <button id="hy">Hoy</button>
+  <button id="pushBtn" class="top-pill" title="Activar recordatorios">🔔</button>
   <button id="cl" data-s="off">☁</button>
 </div>
 <div id="rail"></div><main id="root"></main><button id="fab" aria-label="Añadir">+</button>
@@ -362,6 +364,40 @@ cl.onclick=()=>{if(!KEY){lg.classList.add('on');lgi.focus()}else{clearTimeout(pu
 setInterval(()=>{if(document.visibilityState=='visible')pull()},30000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState=='hidden'){if(pushT){clearTimeout(pushT);push()}}else pull()});
 if(!KEY&&!SKIP)lg.classList.add('on');else if(KEY){setState('sync');pull()}
+
+/* ---- notificaciones push (recordatorios) ---- */
+function b64u8(s){const p='='.repeat((4-s.length%4)%4),b=(s+p).replace(/-/g,'+').replace(/_/g,'/'),raw=atob(b),a=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)a[i]=raw.charCodeAt(i);return a}
+let PUSH_ON=localStorage.getItem('cal2627push')=='1';
+const pushBtn=document.getElementById('pushBtn');
+function setPushUI(){if(!pushBtn)return;pushBtn.classList.toggle('on',PUSH_ON);pushBtn.title=PUSH_ON?'Recordatorios activados (toca para desactivar)':'Activar recordatorios'}
+setPushUI();
+async function subscribePush(){
+  if(!('serviceWorker' in navigator)||!('PushManager' in window)){alert('Tu navegador no soporta notificaciones push.');return}
+  if(!KEY){lg.classList.add('on');lgi.focus();return}
+  try{
+    const perm=await Notification.requestPermission();
+    if(perm!=='granted')return;
+    const reg=await navigator.serviceWorker.ready;
+    const {publicKey}=await fetch('/api/vapid-public-key').then(r=>r.json());
+    let sub=await reg.pushManager.getSubscription();
+    if(!sub)sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64u8(publicKey)});
+    const j=sub.toJSON();
+    await fetch('/api/push-subscribe',{method:'POST',headers:{'content-type':'application/json','x-key':KEY},body:JSON.stringify({endpoint:j.endpoint,keys:j.keys})});
+    PUSH_ON=true;localStorage.setItem('cal2627push','1');setPushUI();
+  }catch(e){alert('No se pudieron activar los recordatorios.')}
+}
+async function unsubscribePush(){
+  try{
+    const reg=await navigator.serviceWorker.ready;
+    const sub=await reg.pushManager.getSubscription();
+    if(sub){
+      await fetch('/api/push-subscribe',{method:'DELETE',headers:{'content-type':'application/json','x-key':KEY},body:JSON.stringify({endpoint:sub.endpoint})}).catch(()=>{});
+      await sub.unsubscribe();
+    }
+  }catch(e){}
+  PUSH_ON=false;localStorage.setItem('cal2627push','0');setPushUI();
+}
+if(pushBtn)pushBtn.onclick=()=>PUSH_ON?unsubscribePush():subscribePush();
 
 render();
 if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js');

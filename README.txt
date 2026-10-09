@@ -14,3 +14,12 @@ CALENDARIO 26/27 — publicar en Vercel con sincronización (Supabase)
    vez que uses una clave se crea un calendario nuevo para ella; si la vuelves
    a usar, recupera siempre el mismo calendario guardado en Supabase.
 8) En el móvil: Compartir / menú del navegador -> "Añadir a pantalla de inicio" para instalarla como app.
+
+9) (Opcional) Recordatorios por notificación push:
+   - Genera tus claves VAPID en tu terminal: npx web-push generate-vapid-keys
+   - En Vercel añade las variables: VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY,
+     VAPID_SUBJECT (p.ej. mailto:tucorreo@dominio.com) y CRON_SECRET (cadena
+     aleatoria, Vercel la usa para proteger el cron job diario).
+   - Redeploy. En la app, pulsa el botón 🔔 "Activar recordatorios" (en iOS,
+     la app debe estar instalada en pantalla de inicio, iOS 16.4+).
+   - Cada día (20:00 UTC) un Cron Job avisa de los eventos pendientes de mañana.
