@@ -66,6 +66,11 @@ section{padding:64px 0 28px;min-height:100svh;display:flex;flex-direction:column
 #lg h2{font:400 38px Allura;color:#2b1a10;margin-bottom:8px}#lg p{font-size:13px;line-height:1.5;color:#5b4a3e;margin-bottom:16px}
 #lg input{background:#fff;border-radius:10px;padding:12px;font:15px Montserrat;text-align:center;border:1px solid #e3d6c9}#lg button{margin-top:12px;width:100%;border:0;background:#e3d6c9;border-radius:10px;padding:12px;font:600 14px Montserrat;color:#2b1a10;cursor:pointer}
 #lg a{display:block;margin-top:14px;font-size:12px;color:#8a7a6c;text-decoration:underline;cursor:pointer}#lge{color:#c0503f;font-size:12px;min-height:16px;margin-top:6px}
+#nm{position:fixed;inset:0;background:#d9d4cfee;backdrop-filter:blur(6px);display:none;z-index:20;align-items:center;justify-content:center;padding:20px}#nm.on{display:flex}
+#nm>div{background:#f4f0ed;border-radius:18px;padding:28px 24px;width:min(360px,100%);text-align:center;box-shadow:0 8px 40px #0003}
+#nm h2{font:400 38px Allura;color:#2b1a10;margin-bottom:8px}#nm p{font-size:13px;line-height:1.5;color:#5b4a3e;margin-bottom:16px}
+#nm input{background:#fff;border-radius:10px;padding:12px;font:15px Montserrat;text-align:center;border:1px solid #e3d6c9}#nm button{margin-top:12px;width:100%;border:0;background:#e3d6c9;border-radius:10px;padding:12px;font:600 14px Montserrat;color:#2b1a10;cursor:pointer}
+#nm a{display:block;margin-top:14px;font-size:12px;color:#8a7a6c;text-decoration:underline;cursor:pointer}#nme{color:#c0503f;font-size:12px;min-height:16px;margin-top:6px}
 /* El Tiempo modal */
 #wtm{position:fixed;inset:0;background:rgba(43,26,16,0);backdrop-filter:blur(0px);-webkit-backdrop-filter:blur(0px);display:flex;z-index:25;align-items:flex-end;justify-content:center;overscroll-behavior:contain;touch-action:none;opacity:0;pointer-events:none;transition:opacity .3s ease,backdrop-filter .3s ease}
 #wtm.on{opacity:1;pointer-events:auto;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);background:rgba(43,26,16,.5)}
@@ -109,6 +114,7 @@ section{padding:64px 0 28px;min-height:100svh;display:flex;flex-direction:column
 <div id="wtm"><div id="wtmc"></div></div>
 <canvas id="cf"></canvas>
 <div id="lg"><div><h2>Calendario 26/27</h2><p>Escribe tu clave secreta. Si usas la misma en todos tus dispositivos, verás siempre lo mismo.</p><input id="lgi" type="password" autocomplete="current-password" placeholder="Tu clave" enterkeyhint="go"><div id="lge"></div><button id="lgb">Entrar</button><a id="lgs">Usar sin sincronizar</a></div></div>
+<div id="nm"><div><h2>¿Cómo te llamas?</h2><p>Solo te lo preguntamos una vez, para saludarte por tu nombre.</p><input id="nmi" type="text" autocomplete="given-name" maxlength="30" placeholder="Tu nombre" enterkeyhint="done"><div id="nme"></div><button id="nmb">Guardar</button></div></div>
 <script>
 const TH=[['sep','Septiembre','#780000',2026,8,'#ec9f97'],['oct','Octubre','#5f4d40',2026,9,'#6f5f54'],['nov','Noviembre','#55595a',2026,10,'#b7bcbc'],['dic','Diciembre','#444830',2026,11,'#7d7a5c'],['ene','Enero','#1e3a6b',2027,0,'#88a0c4'],['feb','Febrero','#8b4a2b',2027,1,'#d9c6b2'],['mar','Marzo','#4b5238',2027,2,'#a4ae96'],['abr','Abril','#d0581a',2027,3,'#e4905f'],['may','Mayo','#a88422',2027,4,'#e2cf8f'],['jun','Junio','#d0708c',2027,5,'#f2c0cf'],['jul','Julio','#2f6b6a',2027,6,'#5fbfb0'],['ago','Agosto','#7a3fb0',2027,7,'#c0a4d8']],
 K={examen:['Examen','#f4c4bd','#d8736a'],entrega:['Entrega','#e3d6c9','#b59a82'],cumple:['Cumple','#f3d3dc','#e08aa5'],tarea:['Tarea','#d5dbc8','#7d9168'],otro:['Otro','#cfd8e6','#7b93b8']},
@@ -118,6 +124,7 @@ const p2=n=>String(n).padStart(2,'0'),iso=(y,m,d)=>y+'-'+p2(m+1)+'-'+p2(d),dd=s=
  fd=s=>dd(s).toLocaleDateString('es-ES',{weekday:'short',day:'numeric',month:'short'}),fdl=s=>dd(s).toLocaleDateString('es-ES',{weekday:'long',day:'numeric',month:'long'}),
  esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),when=n=>n==0?'hoy':n==1?'mañana':'en '+n+' días';
 let S={},T={};try{const o=JSON.parse(localStorage.getItem('cal2627')||'{}');S=o.S||{};T=o.T||{}}catch(e){}
+const nombre=()=>typeof S._name=='string'?S._name:'';
 const save=()=>{try{localStorage.setItem('cal2627',JSON.stringify({S,T}))}catch(e){}};
 const items=()=>Object.keys(S).filter(k=>k[0]=='e').map(k=>{try{return JSON.parse(S[k])}catch(e){return null}}).filter(Boolean),find=id=>items().find(i=>i.id==id);
 function put(it){const k='e'+it.id;S[k]=JSON.stringify(it);T[k]=Date.now();save();queue();render()}
@@ -153,7 +160,7 @@ function runTypewriter(target){
 
 function hoyH(L){
   const td=tdy(),mine=L.filter(i=>i.d==td).sort(byD),n=mine.filter(i=>i.x).length,p=mine.length?n/mine.length:0,h=new Date().getHours(),
-  g=(h<13?'Buenos días':h<21?'Buenas tardes':'Buenas noches')+' Rocío',
+  g=(h<13?'Buenos días':h<21?'Buenas tardes':'Buenas noches')+(nombre()?' '+nombre():''),
   up=L.filter(i=>i.d>td&&!i.x).sort(byD).slice(0,3);
   return `<section><div class="card"><div class="gr"><span id="twTxt">${twDone?esc(g):''}</span><span class="tw-cur" style="${twDone?'display:none':''}">|</span></div><div class="dt">${fdl(td)}</div><div class="rg"><div class="ring"><svg width="88" height="88" viewBox="0 0 88 88"><circle cx="44" cy="44" r="36" fill="none" stroke="#e8d6cf" stroke-width="9"/><circle cx="44" cy="44" r="36" fill="none" stroke="#b5574d" stroke-width="9" stroke-linecap="round" stroke-dasharray="${p*226} 226" transform="rotate(-90 44 44)" style="transition:stroke-dasharray .6s"/></svg><span>${Math.round(p*100)}%</span></div><div><b>${mine.length?n+' de '+mine.length+' tareas':'Día libre'}</b><small>${mine.length&&p==1?'¡Todo hecho! 🎉':mine.length?(n?'Vas bien, sigue así':'¡A por ello!'):'Nada apuntado para hoy'}</small></div></div></div>
   <div class="card"><h3>Hoy</h3>${mine.length?mine.map(row).join(''):'<p class="em">Nada apuntado todavía ✨</p>'}<button class="add" data-a="day" data-d="${td}">+ Añadir</button></div>
@@ -169,7 +176,7 @@ rail.innerHTML=TH.map((t,j)=>`<button data-j="${j}" aria-label="${t[1]}"><i styl
 function render(){
   const L=items();root.innerHTML=hoyH(L)+TH.map(t=>monH(t,L)).join('');fx();
   const h=new Date().getHours();
-  const g=(h<13?'Buenos días':h<21?'Buenas tardes':'Buenas noches')+' Rocío';
+  const g=(h<13?'Buenos días':h<21?'Buenas tardes':'Buenas noches')+(nombre()?' '+nombre():'');
   runTypewriter(g);
   if(sh.classList.contains('on'))shRender();
 }
@@ -353,17 +360,29 @@ function refresh(){const a=document.activeElement;if(a&&/INPUT|TEXTAREA/.test(a.
 addEventListener('focusout',()=>{if(late)setTimeout(()=>{const a=document.activeElement;if(!a||!/INPUT|TEXTAREA/.test(a.tagName)){late=false;show(cur)}},80)});
 async function push(){pushT=null;if(!KEY)return;if(busy){queue();return}busy=true;setState('sync');try{const R=await api('PUT',{S,T});const m=merge(R.data||{});save();if(m.ch)refresh();setState('ok')}catch(e){setState('err')}busy=false}
 function queue(){if(!KEY)return;setState('sync');clearTimeout(pushT);pushT=setTimeout(push,900)}
-async function pull(){if(!KEY||busy||pushT)return;busy=true;try{const R=await api('GET');const m=merge(R.data||{});save();if(m.ch)refresh();setState(m.push?'sync':'ok');busy=false;if(m.push)push()}catch(e){busy=false;if(e.message=='401')setState('err');else setState('err')}}
-async function login(){const v=lgi.value.trim();if(v.length<4){lge.textContent='Mínimo 4 caracteres';return}lge.textContent='';KEY=await sha(v);localStorage.setItem('cal2627key',KEY);localStorage.removeItem('cal2627skip');SKIP=false;setState('sync');
- try{const R=await api('GET');const m=merge(R.data||{});save();if(m.ch)refresh();setState(m.push?'sync':'ok');lge.style.color='#3f9d6a';lge.textContent=R.isNew?'Clave nueva: se ha creado tu calendario.':'Clave reconocida: tu calendario se ha cargado.';if(m.push)push()}
+async function pull(){if(!KEY||busy||pushT)return;busy=true;try{const R=await api('GET');const m=merge(R.data||{});save();if(m.ch)refresh();setState(m.push?'sync':'ok');busy=false;if(m.push)push();askName()}catch(e){busy=false;if(e.message=='401')setState('err');else setState('err')}}
+async function login(){const v=lgi.value.trim();if(v.length<4){lge.textContent='Mínimo 4 caracteres';return}lge.textContent='';let on=false;KEY=await sha(v);localStorage.setItem('cal2627key',KEY);localStorage.removeItem('cal2627skip');SKIP=false;setState('sync');
+ try{const R=await api('GET');const m=merge(R.data||{});save();if(m.ch)refresh();setState(m.push?'sync':'ok');lge.style.color='#3f9d6a';lge.textContent=R.isNew?'Clave nueva: se ha creado tu calendario.':'Clave reconocida: tu calendario se ha cargado.';if(m.push)push();on=true}
  catch(e){setState('err');lge.style.color='';lge.textContent='Sin conexión: se guardará en este dispositivo y se sincronizará en cuanto haya red.'}
- setTimeout(()=>{lg.classList.remove('on');lge.textContent='';lge.style.color=''},1300)}
+ setTimeout(()=>{lg.classList.remove('on');lge.textContent='';lge.style.color='';if(on)askName()},1300)}
 lgb.onclick=login;lgi.addEventListener('keydown',e=>{if(e.key=='Enter')login()});
-lgs.onclick=()=>{SKIP=true;localStorage.setItem('cal2627skip','1');lg.classList.remove('on');setState('off')};
+lgs.onclick=()=>{SKIP=true;localStorage.setItem('cal2627skip','1');lg.classList.remove('on');setState('off');askName()};
 cl.onclick=()=>{if(!KEY){lg.classList.add('on');lgi.focus()}else{clearTimeout(pushT);pushT=null;push()}};
 setInterval(()=>{if(document.visibilityState=='visible')pull()},30000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState=='hidden'){if(pushT){clearTimeout(pushT);push()}}else pull()});
-if(!KEY&&!SKIP)lg.classList.add('on');else if(KEY){setState('sync');pull()}
+/* ---- nombre para el saludo ---- */
+// Se guarda en S._name (se sincroniza con la clave, así sale en todos los dispositivos).
+const nm=document.getElementById('nm'),nmi=document.getElementById('nmi'),nme=document.getElementById('nme');
+// Con clave solo se pregunta tras sincronizar, para no pisar el nombre que ya haya en la nube.
+function askName(force){if(nm.classList.contains('on')||!force&&(nombre()||lg.classList.contains('on')))return;nmi.value=nombre();nme.textContent='';nm.classList.add('on');nmi.focus()}
+function saveName(){const v=nmi.value.trim().replace(/\s+/g,' ');if(!v){nme.textContent='Escribe tu nombre';return}S._name=v;T._name=Date.now();save();queue();nm.classList.remove('on');twDone=false;render()}
+nm.onclick=e=>{if(e.target==nm&&nombre())nm.classList.remove('on')};
+nmb.onclick=saveName;nmi.addEventListener('keydown',e=>{if(e.key=='Enter')saveName()});
+document.addEventListener('click',e=>{if(e.target.closest('.gr'))askName(true)});
+// Quien ya usaba la app antes de pedir el nombre conserva el saludo de siempre. La marca
+// de tiempo 1 hace que cualquier nombre guardado después (aquí o en otro dispositivo) gane.
+if(!localStorage.getItem('cal2627nm')){if((KEY||SKIP)&&!nombre()){S._name='Rocío';T._name=1;save()}localStorage.setItem('cal2627nm','1')}
+if(!KEY&&!SKIP)lg.classList.add('on');else if(KEY){setState('sync');pull()}else askName()
 
 /* ---- notificaciones push (recordatorios) ---- */
 function b64u8(s){const p='='.repeat((4-s.length%4)%4),b=(s+p).replace(/-/g,'+').replace(/_/g,'/'),raw=atob(b),a=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)a[i]=raw.charCodeAt(i);return a}
