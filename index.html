@@ -60,6 +60,9 @@ section{padding:64px 0 28px;min-height:100svh;display:flex;flex-direction:column
 #shi{width:100%;height:52px;border:2px solid #e8bdb8;border-radius:16px;background:#fff;padding:0 16px;font:16px Montserrat;outline:0;margin:10px 0}
 .pv{border-radius:20px;padding:14px 18px;margin-bottom:10px}.pv small{font-size:11px;letter-spacing:1.5px;font-weight:600}.pv b{display:block;font:400 28px 'Abril Fatface',serif;line-height:1.15}.pv span{font-size:14px;display:block}
 #shk{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}#shk button{border:2px solid transparent;border-radius:18px;padding:8px 13px;font:600 12px Montserrat;color:#2b1a10;cursor:pointer}#shk .on{border-color:#2b1a10}
+#sht2{display:flex;align-items:center;gap:8px;margin-bottom:12px}#sht2 label{flex:1;font:600 13px Montserrat}#sht2 small{font-weight:400;color:#8a7a6c}
+#shh{min-width:110px;height:42px;border:2px solid #e3d6c9;border-radius:14px;background:#fff;padding:0 12px;font:600 16px Montserrat;color:#2b1a10;text-align:center;outline:0;-webkit-appearance:none;appearance:none}#shh:focus{border-color:#e8bdb8}
+#shx{border:0;background:#e3d6c9;width:32px;height:32px;border-radius:50%;font-size:18px;color:#2b1a10;cursor:pointer;flex:none}#sht2:not(.has) #shx{visibility:hidden}
 #shs{width:100%;height:54px;border-radius:27px;border:0;background:#2b1a10;color:#f4f0ed;font:600 15px Montserrat;cursor:pointer}
 #cf{position:fixed;inset:0;pointer-events:none;z-index:30}
 #lg{position:fixed;inset:0;background:#d9d4cfee;backdrop-filter:blur(6px);display:none;z-index:20;align-items:center;justify-content:center;padding:20px}#lg.on{display:flex}
@@ -111,7 +114,7 @@ section{padding:64px 0 28px;min-height:100svh;display:flex;flex-direction:column
 </div>
 <div id="rail"></div><main id="root"></main><button id="fab" aria-label="Añadir">+</button>
 <div id="sh"><div id="shc"><i class="hd"></i><h3 id="sht">Nuevo evento</h3><div id="shl"></div>
-<input id="shi" placeholder="Ej: examen mates 15 oct 10h" autocomplete="off" enterkeyhint="done"><div id="shp"></div><div id="shk"></div><button id="shs">Guardar</button></div></div>
+<input id="shi" placeholder="Ej: examen mates 15 oct 10h" autocomplete="off" enterkeyhint="done"><div id="shp"></div><div id="sht2"><label for="shh">🕐 Hora <small>(opcional)</small></label><input id="shh" type="time" step="300"><button id="shx" type="button" aria-label="Quitar hora">×</button></div><div id="shk"></div><button id="shs">Guardar</button></div></div>
 <div id="wtm"><div id="wtmc"></div></div>
 <canvas id="cf"></canvas>
 <div id="lg"><div><h2>Calendario 26/27</h2><p>Escribe tu clave secreta. Si usas la misma en todos tus dispositivos, verás siempre lo mismo.</p><input id="lgi" type="password" autocomplete="current-password" placeholder="Tu clave" enterkeyhint="go"><div id="lge"></div><button id="lgb">Entrar</button><a id="lgs">Usar sin sincronizar</a></div></div>
@@ -321,12 +324,14 @@ function parse(s,def){let t=' '+s.toLowerCase().replace(/\s+/g,' ')+' ',h='',d=d
  for(const [n,r] of kk){const x=t.match(r);if(x){k=n;if(/^(examen|entrega|entregar|cumple|cumpleaños|cumpleanos)$/.test(x[0]))t=t.replace(x[0],' ');break}}
  t=t.replace(/\s+/g,' ').trim().replace(/^(el|para|de|la|del)\s+/,'').replace(/\s+(el|para|de|a|a las)$/,'');
  k=k||(has?'otro':'tarea');return{t:t?t[0].toUpperCase()+t.slice(1):K[k][0],d,h,k}}
-function shRender(){const v=shi.value,own=items().filter(i=>i.d==sd).sort(byD);pr=v.trim()?parse(v,sd):null;if(pr&&ko)pr.k=ko;
+let ho=null;
+function shRender(){const v=shi.value,own=items().filter(i=>i.d==sd).sort(byD);pr=v.trim()?parse(v,sd):null;if(pr&&ko)pr.k=ko;if(pr&&ho!==null)pr.h=ho;
+ const hv=ho!==null?ho:pr?pr.h:'';if(document.activeElement!==shh)shh.value=hv;sht2.classList.toggle('has',!!hv);
  sht.textContent='Nuevo evento · '+fd(sd);shl.innerHTML=own.length?'<div class="card" style="padding:4px 14px;background:#fff">'+own.map(row).join('')+'</div>':'';
  shp.innerHTML=pr?`<div class="pv" style="background:${K[pr.k][1]}"><small>${K[pr.k][0].toUpperCase()}</small><b>${esc(pr.t)}</b><span>${fdl(pr.d)}${pr.h?' · '+pr.h:''} · ${when(dl(pr.d))}</span></div>`:'<p class="em" style="margin-bottom:10px">Escribe y lo entiendo solo: “entrega práctica viernes 18h”.</p>';
  shk.innerHTML=Object.keys(K).map(x=>`<button data-k="${x}" class="${(pr?pr.k:'')==x?'on':''}" style="background:${K[x][1]}">${K[x][0]}</button>`).join('')}
 function openSh(d){
-  sd=d;ko='';shi.value='';
+  sd=d;ko='';ho=null;shi.value='';
   document.body.style.overflow='hidden';
   document.documentElement.style.overflow='hidden';
   sh.classList.add('on');
@@ -338,7 +343,8 @@ function closeSh(){
   document.body.style.overflow='';
   document.documentElement.style.overflow='';
 }
-shi.oninput=shRender;shk.onclick=e=>{const b=e.target.closest('button');if(b){ko=b.dataset.k;shRender()}};
+shi.oninput=shRender;shh.oninput=shh.onchange=()=>{ho=shh.value;shRender()};shx.onclick=()=>{ho='';shh.value='';shRender()};
+shk.onclick=e=>{const b=e.target.closest('button');if(b){ko=b.dataset.k;shRender()}};
 function saveSh(){if(!pr)return;put({id:Date.now().toString(36)+Math.random().toString(36).slice(2,5),t:pr.t,d:pr.d,h:pr.h,k:pr.k,x:0});closeSh();boom();}
 shs.onclick=saveSh;shi.addEventListener('keydown',e=>{if(e.key=='Enter')saveSh()});sh.onclick=e=>{if(e.target==sh)closeSh()};
 fab.onclick=()=>openSh(tdy());
