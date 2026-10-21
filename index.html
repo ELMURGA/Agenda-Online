@@ -411,6 +411,8 @@ async function subscribePush(){
     const j=sub.toJSON();
     const r=await fetch('/api/push-subscribe',{method:'POST',headers:{'content-type':'application/json','x-key':KEY},body:JSON.stringify({endpoint:j.endpoint,keys:j.keys})});
     if(!r.ok)throw new Error('subscribe');
+    const rj=await r.json().catch(()=>({}));
+    if(rj.push&&rj.push!=='sent'&&rj.push!=='skipped')alert('Activado, pero el aviso de prueba no ha llegado ('+rj.push+').');
     PUSH_ON=true;localStorage.setItem('cal2627push','1');setPushUI();
   }catch(e){console.error('push',e);alert('No se pudieron activar los recordatorios.'+(e&&e.message?' ('+e.message+')':''))}
 }

@@ -189,3 +189,52 @@ grant execute on function public.delete_push_subscription(text, text) to service
 grant execute on function public.prune_push_subscription(text) to service_role;
 grant execute on function public.list_push_targets() to service_role;
 grant execute on function public.mark_push_sent(text, date) to service_role;
+
+-- ============================================================================
+-- Avisos a la hora de cada evento (1 hora antes), además del resumen de la noche.
+-- ============================================================================
+
+-- Registro por evento, para no avisar dos veces del mismo evento. "p_when" guarda
+-- la fecha y hora avisadas: si el evento se cambia de hora, se vuelve a avisar.
+create table if not exists public.push_event_log (
+  key_hash   text not null references public.calendars(key_hash) on delete cascade,
+  event_id   text not null,
+  kind       text not null,
+  event_when text not null,
+  sent_at    timestamptz not null default now(),
+  primary key (key_hash, event_id, kind, event_when)
+);
+alter table public.push_event_log enable row level security;
+
+create or replace function public.mark_event_sent(p_key text, p_event text, p_kind text, p_when text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.push_event_log (key_hash, event_id, kind, event_when) values (p_key, p_event, p_kind, p_when)
+    on conflict do nothing;
+  return found;
+end;
+$$;
+revoke all on function public.mark_event_sent(text, text, text, text) from public;
+grant execute on function public.mark_event_sent(text, text, text, text) to service_role;
+
+-- Programador: Supabase llama cada 5 minutos a /api/cron-notify?mode=hour, y cada
+-- noche a /api/cron-notify (el resumen de mañana; Vercel también lo lanza y el
+-- registro push_log evita duplicados). Repetir una llamada no reenvía nada: los
+-- registros push_log y push_event_log lo impiden. Si algún día se define CRON_SECRET
+-- en Vercel, hay que añadir aquí la cabecera Authorization: Bearer <CRON_SECRET>.
+create extension if not exists pg_cron;
+create extension if not exists pg_net;
+select cron.schedule('agenda-avisos-hora', '*/5 * * * *', $$
+  select net.http_get(
+    url := 'https://agenda-onlinee.vercel.app/api/cron-notify?mode=hour',
+    timeout_milliseconds := 20000)
+$$);
+select cron.schedule('agenda-avisos-noche', '0 20 * * *', $$
+  select net.http_get(
+    url := 'https://agenda-onlinee.vercel.app/api/cron-notify',
+    timeout_milliseconds := 20000)
+$$);
